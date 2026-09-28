@@ -1,9 +1,11 @@
-// Wraps Firebase Authentication (email/password) and exposes the current
-// user + role to the rest of the app.
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
+  GoogleAuthProvider,
+  signInWithPopup,
   signOut
 } from 'firebase/auth';
 import { ref, get } from 'firebase/database';
@@ -20,9 +22,13 @@ export function AuthProvider({ children }) {
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
       if (firebaseUser) {
-        // Roles are stored at /users/{uid}/role in the Realtime Database.
-        const snap = await get(ref(db, `users/${firebaseUser.uid}/role`));
-        setRole(snap.exists() ? snap.val() : 'Operator');
+        try {
+          // Roles live at /users/{uid}/role. Anyone without one is an Operator.
+          const snap = await get(ref(db, `users/${firebaseUser.uid}/role`));
+          setRole(snap.exists() ? snap.val() : 'Operator');
+        } catch {
+          setRole('Operator');
+        }
       } else {
         setRole(null);
       }
@@ -32,10 +38,18 @@ export function AuthProvider({ children }) {
   }, []);
 
   const login = (email, password) => signInWithEmailAndPassword(auth, email, password);
+
+  const signup = async (name, email, password) => {
+    const cred = await createUserWithEmailAndPassword(auth, email, password);
+    if (name) await updateProfile(cred.user, { displayName: name });
+    return cred;
+  };
+
+  const loginWithGoogle = () => signInWithPopup(auth, new GoogleAuthProvider());
   const logout = () => signOut(auth);
 
   return (
-    <AuthContext.Provider value={{ user, role, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, role, loading, login, signup, loginWithGoogle, logout }}>
       {children}
     </AuthContext.Provider>
   );
